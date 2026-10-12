@@ -89,7 +89,7 @@ async def identificar_especie(
             # Nueva conexión limpia de Gemini
             client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
             respuesta_ia = client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-3.8-flash',
                 contents=prompt_botanico
             )
             descripcion = respuesta_ia.text.strip()
