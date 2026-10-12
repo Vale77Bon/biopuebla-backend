@@ -1,0 +1,23 @@
+generator client {
+  provider             = "prisma-client-py"
+  interface            = "asyncio"
+  recursive_type_depth = 5
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model ConsultaPlanta {
+  id                String   @id @default(uuid())
+  nombre_cientifico String
+  nombre_comun      String?
+  probabilidad      Float
+  fecha_escaneo     DateTime @default(now())
+  foto_url          String?
+  latitud           Float?
+  longitud          Float?
+  descripcion       String?
+}
