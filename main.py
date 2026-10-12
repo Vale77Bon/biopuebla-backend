@@ -34,10 +34,6 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# ==========================================
-# CONFIGURACIÓN DE GEMINI IA
-# ==========================================
-
 PLANTNET_API_KEY = "2b10T8PRnlY5i6iUQbGrvfYe"
 PLANTNET_URL = f"https://my-api.plantnet.org/v2/identify/all?api-key={PLANTNET_API_KEY}&lang=es"
 
@@ -86,21 +82,21 @@ async def identificar_especie(
         probabilidad = float(mejor_resultado['score'] * 100)
         
         # 2. Extraer descripción con Inteligencia Artificial
-    descripcion = None
-    try:
-        prompt_botanico = f"Actúa como un botánico experto. Escribe un resumen breve, de máximo 3 líneas y fácil de entender, sobre la planta conocida como {nombre_comun} (nombre científico: {nombre_cientifico}). Menciona algún dato curioso o su cuidado básico."
-        
-        # Nueva conexión limpia de Gemini
-        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-        respuesta_ia = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt_botanico
-        )
-        descripcion = respuesta_ia.text.strip()
-    except Exception as e:
-        print(f"Error con la IA: {e}")
-        descripcion = "Descripción biológica no disponible en este momento."
-        
+        descripcion = None
+        try:
+            prompt_botanico = f"Actúa como un botánico experto. Escribe un resumen breve, de máximo 3 líneas y fácil de entender, sobre la planta conocida como {nombre_comun} (nombre científico: {nombre_cientifico}). Menciona algún dato curioso o su cuidado básico."
+            
+            # Nueva conexión limpia de Gemini
+            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+            respuesta_ia = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt_botanico
+            )
+            descripcion = respuesta_ia.text.strip()
+        except Exception as e:
+            print(f"Error con la IA: {e}")
+            descripcion = "Descripción biológica no disponible en este momento."
+
         # 3. Subir la foto a Supabase Storage
         nombre_archivo = f"{uuid.uuid4()}.jpg"
         
