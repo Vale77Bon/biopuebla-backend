@@ -81,21 +81,39 @@ async def identificar_especie(
         nombre_comun = nombres_comunes[0] if nombres_comunes else nombre_cientifico
         probabilidad = float(mejor_resultado['score'] * 100)
         
-        # 2. Extraer descripción con Inteligencia Artificial
+        # ========================================================
+        # 2. SISTEMA DE CACHÉ Y EXTRACCIÓN CON IA
+        # ========================================================
         descripcion = None
-        try:
-            prompt_botanico = f"Actúa como un botánico experto. Escribe un resumen breve, de máximo 3 líneas y fácil de entender, sobre la planta conocida como {nombre_comun} (nombre científico: {nombre_cientifico}). Menciona algún dato curioso o su cuidado básico."
-            
-            # Nueva conexión limpia de Gemini
-            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-            respuesta_ia = client.models.generate_content(
-                model='gemini-3.8-flash',
-                contents=prompt_botanico
-            )
-            descripcion = respuesta_ia.text.strip()
-        except Exception as e:
-            print(f"Error con la IA: {e}")
-            descripcion = "Descripción biológica no disponible en este momento."
+        
+        # A. Buscar en el historial si ya existe esta planta con una descripción válida
+        plantas_previas = await db.consultaplanta.find_many(
+            where={'nombre_cientifico': nombre_cientifico}
+        )
+        
+        for planta in plantas_previas:
+            # Si tiene texto y NO es nuestro mensaje de error...
+            if planta.descripcion and "no disponible" not in planta.descripcion:
+                descripcion = planta.descripcion
+                print(f"🌿 ¡Ahorro de API! Recuperado de CACHÉ: {nombre_cientifico}")
+                break
+                
+        # B. Si no estaba en caché, le preguntamos a Gemini por primera vez
+        if not descripcion:
+            print(f"🔍 Nueva especie detectada. Consultando a Gemini: {nombre_cientifico}")
+            try:
+                prompt_botanico = f"Actúa como un botánico experto. Escribe un resumen breve, de máximo 3 líneas y fácil de entender, sobre la planta conocida como {nombre_comun} (nombre científico: {nombre_cientifico}). Menciona algún dato curioso o su cuidado básico."
+                
+                client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+                respuesta_ia = client.models.generate_content(
+                    model='gemini-3.8-flash',
+                    contents=prompt_botanico
+                )
+                descripcion = respuesta_ia.text.strip()
+            except Exception as e:
+                print(f"Error con la IA: {e}")
+                descripcion = "Descripción biológica no disponible en este momento."
+        # ========================================================
 
         # 3. Subir la foto a Supabase Storage
         nombre_archivo = f"{uuid.uuid4()}.jpg"
