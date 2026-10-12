@@ -1,4 +1,3 @@
-# main.py
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 import requests
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,28 +9,14 @@ from supabase import create_client, Client
 import os
 from dotenv import load_dotenv
 
-app = FastAPI(title="BioPuebla API - Reconocimiento de Flora")
-
-db = Prisma()
-
+# Cargar variables de entorno (para pruebas locales)
 load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
+app = FastAPI(title="BioPuebla API - Reconocimiento de Flora")
+
 # ==========================================
-# NUEVA CONFIGURACIÓN DE SUPABASE STORAGE
+# CONFIGURACIÓN DE CORS (PERMISOS PARA CELULAR)
 # ==========================================
-# (Ve a Supabase > Settings > API para copiar esto)
-
-modelo_ia = genai.GenerativeModel('gemini-3.6-flash')
-
-@app.on_event("startup")
-async def startup():
-    await db.connect()
-
-@app.on_event("shutdown")
-async def shutdown():
-    await db.disconnect()
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -40,8 +25,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+db = Prisma()
+
+# ==========================================
+# CONFIGURACIÓN DE SUPABASE
+# ==========================================
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# ==========================================
+# CONFIGURACIÓN DE GEMINI IA
+# ==========================================
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# Nota: Actualicé a gemini-1.5-flash que es la versión correcta y vigente
+modelo_ia = genai.GenerativeModel('gemini-1.5-flash') 
+
 PLANTNET_API_KEY = "2b10T8PRnlY5i6iUQbGrvfYe"
 PLANTNET_URL = f"https://my-api.plantnet.org/v2/identify/all?api-key={PLANTNET_API_KEY}&lang=es"
+
+@app.on_event("startup")
+async def startup():
+    await db.connect()
+
+@app.on_event("shutdown")
+async def shutdown():
+    await db.disconnect()
 
 @app.post("/identificar/")
 async def identificar_especie(
@@ -79,10 +88,7 @@ async def identificar_especie(
         nombre_comun = nombres_comunes[0] if nombres_comunes else nombre_cientifico
         probabilidad = float(mejor_resultado['score'] * 100)
         
-        
-        # ========================================================
-        # NUEVO: EXTRAER DESCRIPCIÓN CON INTELIGENCIA ARTIFICIAL
-        # ========================================================
+        # 2. Extraer descripción con Inteligencia Artificial
         descripcion = None
         try:
             prompt_botanico = f"Actúa como un botánico experto. Escribe un resumen breve, de máximo 3 líneas y fácil de entender, sobre la planta conocida como {nombre_comun} (nombre científico: {nombre_cientifico}). Menciona algún dato curioso o su cuidado básico."
@@ -92,17 +98,10 @@ async def identificar_especie(
         except Exception as e:
             print(f"Error con la IA: {e}")
             descripcion = "Descripción biológica no disponible en este momento."
-        # ========================================================
-        
-        # ========================================================
 
-        # ========================================================
-        # 2. NUEVO: SUBIR LA FOTO A SUPABASE STORAGE
-        # ========================================================
-        # Generamos un nombre único para que no se sobreescriban fotos
+        # 3. Subir la foto a Supabase Storage
         nombre_archivo = f"{uuid.uuid4()}.jpg"
         
-        # Le decimos a Supabase explícitamente que es una imagen (image/jpeg)
         res = supabase.storage.from_("plantas").upload(
             path=nombre_archivo,
             file=contenido_imagen,
@@ -110,9 +109,8 @@ async def identificar_especie(
         )
         
         url_publica = supabase.storage.from_("plantas").get_public_url(nombre_archivo)
-        # ========================================================
-        # 3. Guardar en Prisma (Ahora incluyendo la foto)
         
+        # 4. Guardar en Prisma (Base de datos)
         await db.consultaplanta.create(
             data={
                 'nombre_cientifico': nombre_cientifico,
@@ -142,7 +140,6 @@ async def identificar_especie(
 @app.get("/historial/")
 async def obtener_historial():
     try:
-        # Traemos todas las plantas ordenadas de la más reciente a la más antigua
         historial = await db.consultaplanta.find_many(order={'fecha_escaneo': 'desc'})
         
         lista_historial = []
@@ -156,7 +153,7 @@ async def obtener_historial():
                 "foto_url": item.foto_url,
                 "latitud": item.latitud,
                 "longitud": item.longitud,
-                "descripcion": item.descripcion  # <-- Este es el campo clave que faltaba
+                "descripcion": item.descripcion
             })
         return lista_historial
     except Exception as e:
