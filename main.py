@@ -104,7 +104,7 @@ async def identificar_especie(
         if not descripcion:
             print(f"🔍 Nueva especie detectada. Consultando a Gemini: {nombre_cientifico}")
             
-            max_reintentos = 3
+            max_reintentos = 2
             for intento in range(max_reintentos):
                 try:
                     prompt_botanico = f"Actúa como un botánico experto. Escribe un resumen breve, de máximo 3 líneas y fácil de entender, sobre la planta conocida como {nombre_comun} (nombre científico: {nombre_cientifico}). Menciona algún dato curioso o su cuidado básico."
