@@ -47,7 +47,7 @@ async def shutdown():
     await db.disconnect()
 
 # ==========================================
-# ENDPOINT 1: FLORA (Pl@ntNet + Caché Gemini)
+# ENDPOINT 1: FLORA (Pl@ntNet + Caché Gemini + Groq)
 # ==========================================
 @app.post("/identificar/")
 async def identificar_especie(
@@ -86,43 +86,80 @@ async def identificar_especie(
         probabilidad = float(mejor_resultado['score'] * 100)
         
         # ========================================================
-        # 2. SISTEMA DE CACHÉ Y EXTRACCIÓN CON IA
+        # 2. SISTEMA DE CACHÉ Y EXTRACCIÓN CON IA MULTIPLE
         # ========================================================
         descripcion = None
         
+        # A. Buscar en el historial si ya existe
         plantas_previas = await db.consultaplanta.find_many(
             where={'nombre_cientifico': nombre_cientifico}
         )
         
         for planta in plantas_previas:
-            if planta.descripcion and "no disponible" not in planta.descripcion:
+            if planta.descripcion and "no disponible" not in planta.descripcion and "mantenimiento" not in planta.descripcion:
                 descripcion = planta.descripcion
                 print(f"🌿 ¡Ahorro de API! Recuperado de CACHÉ: {nombre_cientifico}")
                 break
                 
-        # B. Si no estaba en caché, le preguntamos a Gemini con REINTENTOS AUTOMÁTICOS
+        # B. Si no estaba en caché, consultamos IA
         if not descripcion:
             print(f"🔍 Nueva especie detectada. Consultando a Gemini: {nombre_cientifico}")
             
+            prompt_botanico = f"Actúa como un botánico experto. Escribe un resumen breve, de máximo 3 líneas y fácil de entender, sobre la planta conocida como {nombre_comun} (nombre científico: {nombre_cientifico}). Menciona algún dato curioso o su cuidado básico."
+            
             max_reintentos = 2
+            exito_gemini = False
+            
+            # INTENTO 1: GOOGLE GEMINI
             for intento in range(max_reintentos):
                 try:
-                    prompt_botanico = f"Actúa como un botánico experto. Escribe un resumen breve, de máximo 3 líneas y fácil de entender, sobre la planta conocida como {nombre_comun} (nombre científico: {nombre_cientifico}). Menciona algún dato curioso o su cuidado básico."
-                    
                     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
                     respuesta_ia = client.models.generate_content(
                         model='gemini-3.8-flash',
                         contents=prompt_botanico
                     )
                     descripcion = respuesta_ia.text.strip()
-                    break  # Si tiene éxito, rompemos el ciclo y continuamos
-                    
+                    exito_gemini = True
+                    break 
                 except Exception as e:
-                    print(f"⚠️ Error de red/demanda con IA (Intento {intento + 1}/{max_reintentos}): {e}")
+                    print(f"⚠️ Error Gemini (Intento {intento + 1}/{max_reintentos}): {e}")
                     if intento < max_reintentos - 1:
-                        time.sleep(2)  # Esperar 2 segundos antes de volver a tocar la puerta de Google
+                        time.sleep(1)
+            
+            # INTENTO 2: GROQ (LLAMA 3) DE RESPALDO
+            if not exito_gemini:
+                print("🛟 Gemini saturado. Activando IA de repuesto (Groq / Llama 3)...")
+                try:
+                    groq_api_key = os.getenv("GROQ_API_KEY")
+                    if not groq_api_key:
+                        raise ValueError("La llave de Groq no está configurada en Render.")
+                        
+                    headers = {
+                        "Authorization": f"Bearer {groq_api_key}",
+                        "Content-Type": "application/json"
+                    }
+                    payload = {
+                        "model": "llama3-8b-8192",
+                        "messages": [
+                            {"role": "system", "content": "Eres un biólogo experto. Responde siempre de forma breve y precisa."},
+                            {"role": "user", "content": prompt_botanico}
+                        ],
+                        "temperature": 0.5,
+                        "max_tokens": 150
+                    }
+                    
+                    res_groq = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
+                    datos_groq = res_groq.json()
+                    
+                    if res_groq.status_code == 200:
+                        descripcion = datos_groq['choices'][0]['message']['content'].strip()
+                        print("✅ Resumen obtenido de Groq (Llama 3) exitosamente.")
                     else:
-                        descripcion = "Descripción biológica no disponible en este momento."
+                        raise Exception(f"Error de Groq: {datos_groq}")
+                        
+                except Exception as e:
+                    print(f"❌ Falló también la IA de repuesto: {e}")
+                    descripcion = "Planta identificada correctamente, pero los servidores de Inteligencia Artificial están en mantenimiento."
         # ========================================================
 
         # 3. Subir la foto a Supabase Storage
