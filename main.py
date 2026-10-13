@@ -188,8 +188,8 @@ async def identificar_especie(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
-# ==========================================
-# ENDPOINT 2: FAUNA (Gemini + Groq Vision)
+    # ==========================================
+# ENDPOINT 2: FAUNA (Gemini + Groq Vision 90B)
 # ==========================================
 @app.post("/identificar-fauna/")
 async def identificar_fauna(
@@ -200,6 +200,11 @@ async def identificar_fauna(
     contenido_imagen = await imagen.read()
     
     try:
+        from google.genai import types
+        import base64
+        import time
+        import re
+
         prompt_fauna = """
         Eres un biólogo experto. Analiza esta imagen e identifica al animal (insecto, ave, mamífero, etc.).
         Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura exacta, sin texto extra:
@@ -243,9 +248,9 @@ async def identificar_fauna(
                 if intento < max_reintentos - 1:
                     time.sleep(1)
 
-        # INTENTO 2: GROQ VISION (LLAMA 3.2) DE RESPALDO
+        # INTENTO 2: GROQ VISION (LLAMA 3.2 - 90B) DE RESPALDO
         if not exito_gemini:
-            print("🛟 Activando repuesto Groq Vision (Llama 3.2) para Fauna...")
+            print("🛟 Activando repuesto Groq Vision (Llama 3.2 - 90B) para Fauna...")
             groq_key = os.getenv("GROQ_API_KEY")
             imagen_b64 = base64.b64encode(contenido_imagen).decode('utf-8')
             
@@ -254,7 +259,7 @@ async def identificar_fauna(
                 "Content-Type": "application/json"
             }
             payload = {
-                "model": "llama-3.2-11b-vision-instruct",
+                "model": "llama-3.2-90b-vision-preview",  # <--- EL NUEVO MODELO DE 90 BILLONES
                 "messages": [
                     {
                         "role": "user",
@@ -277,7 +282,12 @@ async def identificar_fauna(
                 else:
                     raise Exception("Groq no devolvió un JSON válido")
             else:
-                raise Exception(f"Fallo en Groq: {res_groq.text}")
+                print(f"Fallo en Groq: {res_groq.text}")
+                # ANTI-CRASH: Si Groq también falla, mandamos un error controlado, NO un error 500
+                return {
+                    "exito": False, 
+                    "mensaje": "Los servidores de IA (Google y Meta) están saturados por alta demanda mundial. Intenta escanear de nuevo en un minuto."
+                }
 
         # Validar si encontró algo
         if not datos_animal or datos_animal.get("nombre_comun") == "Ninguno":
@@ -322,8 +332,13 @@ async def identificar_fauna(
 
     except Exception as e:
         print(f"❌ Error CRÍTICO en Fauna: {e}")
-        raise HTTPException(status_code=500, detail=f"Error al analizar el animal: {str(e)}")
+        # RED DE SEGURIDAD FINAL: Nunca devolver error 500 a la aplicación
+        return {
+            "exito": False, 
+            "mensaje": "Los servidores de Inteligencia Artificial están experimentando alta demanda. Intenta de nuevo en unos segundos."
+        }   
 
+        
 # ==========================================
 # ENDPOINT 3: HISTORIAL
 # ==========================================
