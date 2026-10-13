@@ -254,7 +254,7 @@ async def identificar_fauna(
                 "Content-Type": "application/json"
             }
             payload = {
-                "model": "llama-3.2-11b-vision-preview",
+                "model": "llama-3.2-11b-vision-instruct",
                 "messages": [
                     {
                         "role": "user",
