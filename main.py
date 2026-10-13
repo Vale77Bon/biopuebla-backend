@@ -133,7 +133,7 @@ async def identificar_especie(
                         "Content-Type": "application/json"
                     }
                     payload = {
-                        "model": "llama-3.2-90b-vision-instruct",
+                        "model": "qwen/qwen3.8-27b",
                         "messages": [
                             {"role": "system", "content": "Eres un biólogo experto. Responde siempre de forma breve y precisa."},
                             {"role": "user", "content": prompt_botanico}
